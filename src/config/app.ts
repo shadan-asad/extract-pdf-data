@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { receiptRoutes } from '../routes/receiptRoutes';
+import receiptRoutes from '../routes/receiptRoutes';
 import { errorHandler } from '../middleware/errorHandler';
 
 export const createApp = () => {

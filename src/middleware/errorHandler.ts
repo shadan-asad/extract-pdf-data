@@ -13,13 +13,13 @@ export const errorHandler = (
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({
         status: 'error',
-        type: ErrorType.VALIDATION_ERROR,
+        type: ErrorType.VALIDATION,
         message: 'File size too large. Maximum size is 5MB'
       });
     }
     return res.status(400).json({
       status: 'error',
-      type: ErrorType.VALIDATION_ERROR,
+      type: ErrorType.VALIDATION,
       message: `Upload error: ${err.message}`
     });
   }
@@ -38,7 +38,7 @@ export const errorHandler = (
   if (err.name === 'QueryFailedError') {
     return res.status(500).json({
       status: 'error',
-      type: ErrorType.DATABASE_ERROR,
+      type: ErrorType.DATABASE,
       message: 'Database operation failed',
       ...(process.env.NODE_ENV === 'development' && { details: err.message })
     });
@@ -48,7 +48,7 @@ export const errorHandler = (
   console.error('Unhandled error:', err);
   return res.status(500).json({
     status: 'error',
-    type: ErrorType.PROCESSING_ERROR,
+    type: ErrorType.PROCESSING,
     message: 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });

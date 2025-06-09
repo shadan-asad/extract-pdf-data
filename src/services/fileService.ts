@@ -2,12 +2,22 @@ import fs from 'fs';
 import path from 'path';
 import { AppDataSource } from '../config/database';
 import { ReceiptFile } from '../models/ReceiptFile';
-import { createWorker } from 'tesseract.js';
-import pdf from 'pdf-parse';
 import { AppError } from '../types/errors';
 
 export class FileService {
   private receiptFileRepository = AppDataSource.getRepository(ReceiptFile);
+  private uploadDir: string;
+
+  constructor() {
+    this.uploadDir = path.join(process.cwd(), 'uploads');
+    this.ensureUploadDirectory();
+  }
+
+  private ensureUploadDirectory(): void {
+    if (!fs.existsSync(this.uploadDir)) {
+      fs.mkdirSync(this.uploadDir, { recursive: true });
+    }
+  }
 
   async saveFileMetadata(fileName: string, filePath: string): Promise<ReceiptFile> {
     try {
@@ -23,24 +33,45 @@ export class FileService {
     }
   }
 
+  async saveFile(file: Express.Multer.File): Promise<string> {
+    try {
+      // Generate unique filename
+      const timestamp = Date.now();
+      const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const filename = `${timestamp}-${originalName}`;
+      const filePath = path.join(this.uploadDir, filename);
+
+      // Move file to upload directory
+      await fs.promises.rename(file.path, filePath);
+
+      // Return relative path
+      return path.relative(process.cwd(), filePath);
+    } catch (error) {
+      throw AppError.fileError('Failed to save file');
+    }
+  }
+
   async validatePdf(filePath: string): Promise<{ isValid: boolean; reason?: string }> {
     try {
       const fullPath = path.join(process.cwd(), filePath);
       if (!fs.existsSync(fullPath)) {
-        return {
-          isValid: false,
-          reason: 'File not found on disk'
-        };
+        return { isValid: false, reason: 'File not found' };
       }
 
-      const dataBuffer = fs.readFileSync(fullPath);
-      await pdf(dataBuffer);
-      return { isValid: true };
-    } catch (error) {
+      // Basic PDF validation - check file signature
+      const buffer = Buffer.alloc(5);
+      const fd = await fs.promises.open(fullPath, 'r');
+      await fd.read(buffer, 0, 5, 0);
+      await fd.close();
+
+      // Check for PDF signature (%PDF-)
+      const isPdf = buffer.toString().startsWith('%PDF-');
       return {
-        isValid: false,
-        reason: error instanceof Error ? error.message : 'Invalid PDF file'
+        isValid: isPdf,
+        reason: isPdf ? undefined : 'Invalid PDF format'
       };
+    } catch (error) {
+      return { isValid: false, reason: 'Failed to validate PDF' };
     }
   }
 
@@ -71,26 +102,14 @@ export class FileService {
     }
   }
 
-  async deleteFile(id: number): Promise<void> {
+  async deleteFile(filePath: string): Promise<void> {
     try {
-      const file = await this.getFileById(id);
-      if (!file) {
-        throw AppError.notFound(`File with ID ${id} not found`);
+      const fullPath = path.join(process.cwd(), filePath);
+      if (fs.existsSync(fullPath)) {
+        await fs.promises.unlink(fullPath);
       }
-
-      // Delete physical file
-      const filePath = path.join(process.cwd(), file.file_path);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-
-      // Delete database record
-      await this.deleteFileRecord(id);
     } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-      throw AppError.databaseError('Failed to delete file');
+      throw AppError.fileError('Failed to delete file');
     }
   }
 
@@ -98,7 +117,7 @@ export class FileService {
     try {
       const result = await this.receiptFileRepository.delete(id);
       if (result.affected === 0) {
-        throw AppError.notFound(`File with ID ${id} not found`);
+        throw AppError.notFoundError(`File with ID ${id} not found`);
       }
     } catch (error) {
       if (error instanceof AppError) {

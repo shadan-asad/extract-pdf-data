@@ -1,23 +1,20 @@
 import { Router } from 'express';
 import { ReceiptController } from '../controllers/receiptController';
-import { upload } from '../middleware/upload';
+import { uploadMiddleware } from '../middleware/uploadMiddleware';
 
 const router = Router();
 const receiptController = new ReceiptController();
 
-// File upload route - using array of middleware
-router.post('/upload', ...upload, receiptController.uploadFile);
+// Upload a new receipt
+router.post('/upload', uploadMiddleware, receiptController.uploadReceipt.bind(receiptController));
 
-// File validation route
-router.post('/validate/:id', receiptController.validateFile);
+// Get a specific receipt
+router.get('/:id', receiptController.getReceipt.bind(receiptController));
 
-// Get all files
-router.get('/files', receiptController.getAllFiles);
+// List all receipts with pagination
+router.get('/', receiptController.listReceipts.bind(receiptController));
 
-// Get single file
-router.get('/files/:id', receiptController.getFile);
+// Delete a receipt
+router.delete('/:id', receiptController.deleteReceipt.bind(receiptController));
 
-// Delete file
-router.delete('/files/:id', receiptController.deleteFile);
-
-export const receiptRoutes = router; 
+export default router; 

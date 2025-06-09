@@ -1,39 +1,39 @@
 export enum ErrorType {
-  VALIDATION_ERROR = 'VALIDATION_ERROR',
-  NOT_FOUND = 'NOT_FOUND',
-  FILE_ERROR = 'FILE_ERROR',
-  DATABASE_ERROR = 'DATABASE_ERROR',
-  PROCESSING_ERROR = 'PROCESSING_ERROR'
+  VALIDATION = 'VALIDATION_ERROR',
+  NOT_FOUND = 'NOT_FOUND_ERROR',
+  FILE = 'FILE_ERROR',
+  DATABASE = 'DATABASE_ERROR',
+  PROCESSING = 'PROCESSING_ERROR'
 }
 
 export class AppError extends Error {
-  constructor(
-    public type: ErrorType,
-    public message: string,
-    public statusCode: number,
-    public isOperational = true
-  ) {
+  public readonly statusCode: number;
+  public readonly type: ErrorType;
+
+  constructor(message: string, statusCode: number, type: ErrorType) {
     super(message);
+    this.statusCode = statusCode;
+    this.type = type;
     Object.setPrototypeOf(this, AppError.prototype);
   }
 
-  static notFound(message: string = 'Resource not found'): AppError {
-    return new AppError(ErrorType.NOT_FOUND, message, 404);
+  static validationError(message: string): AppError {
+    return new AppError(message, 400, ErrorType.VALIDATION);
   }
 
-  static validationError(message: string): AppError {
-    return new AppError(ErrorType.VALIDATION_ERROR, message, 400);
+  static notFoundError(message: string): AppError {
+    return new AppError(message, 404, ErrorType.NOT_FOUND);
   }
 
   static fileError(message: string): AppError {
-    return new AppError(ErrorType.FILE_ERROR, message, 400);
+    return new AppError(message, 400, ErrorType.FILE);
   }
 
   static databaseError(message: string): AppError {
-    return new AppError(ErrorType.DATABASE_ERROR, message, 500);
+    return new AppError(message, 500, ErrorType.DATABASE);
   }
 
   static processingError(message: string): AppError {
-    return new AppError(ErrorType.PROCESSING_ERROR, message, 500);
+    return new AppError(message, 500, ErrorType.PROCESSING);
   }
 } 

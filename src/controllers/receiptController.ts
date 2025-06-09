@@ -1,164 +1,156 @@
 import { Request, Response, NextFunction } from 'express';
 import { FileService } from '../services/fileService';
-import { AppError, ErrorType } from '../types/errors';
-import path from 'path';
-import fs from 'fs';
+import { ReceiptExtractionService } from '../services/receiptExtractionService';
+import { AppError } from '../types/errors';
+import { Receipt } from '../models/Receipt';
+import { AppDataSource } from '../config/database';
 
 export class ReceiptController {
   private fileService: FileService;
+  private extractionService: ReceiptExtractionService;
+  private receiptRepository = AppDataSource.getRepository(Receipt);
 
   constructor() {
     this.fileService = new FileService();
+    this.extractionService = new ReceiptExtractionService();
   }
 
-  uploadFile = async (req: Request, res: Response, next: NextFunction) => {
+  async uploadReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.file) {
-        throw AppError.validationError('No file uploaded. Please upload a PDF file with field name "receipt"');
+        throw AppError.validationError('No file uploaded');
       }
 
-      // Validate file exists on disk
-      if (!fs.existsSync(req.file.path)) {
-        throw AppError.fileError('Uploaded file not found on server');
-      }
+      // Save file to disk
+      const filePath = await this.fileService.saveFile(req.file);
 
-      const filePath = path.relative(process.cwd(), req.file.path);
-      const receiptFile = await this.fileService.saveFileMetadata(req.file.originalname, filePath);
+      // Extract data from receipt
+      const extractedData = await this.extractionService.extractReceiptData(filePath);
+
+      // Save receipt data to database
+      const receipt = await this.extractionService.saveReceiptData(filePath, extractedData);
 
       res.status(201).json({
-        status: 'success',
-        data: receiptFile
-      });
-    } catch (error) {
-      // If there's an error and we have a file, clean it up
-      if (req.file?.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      next(error);
-    }
-  };
-
-  validateFile = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { id } = req.params;
-      
-      // Validate ID is a number
-      if (isNaN(Number(id))) {
-        throw AppError.validationError('Invalid file ID format');
-      }
-
-      const file = await this.fileService.getFileById(Number(id));
-      if (!file) {
-        throw AppError.notFound(`File with ID ${id} not found`);
-      }
-
-      // Check if file exists on disk
-      const fullPath = path.join(process.cwd(), file.file_path);
-      if (!fs.existsSync(fullPath)) {
-        throw AppError.fileError(`File not found at path: ${file.file_path}`);
-      }
-
-      const validationResult = await this.fileService.validatePdf(file.file_path);
-      await this.fileService.updateFileValidation(file.id, validationResult.isValid, validationResult.reason);
-
-      res.status(200).json({
-        status: 'success',
+        success: true,
         data: {
-          isValid: validationResult.isValid,
-          reason: validationResult.reason
+          receipt: {
+            id: receipt.id,
+            merchant_name: receipt.merchant_name,
+            purchased_at: receipt.purchased_at,
+            total_amount: receipt.total_amount,
+            file_path: receipt.file_path,
+            created_at: receipt.created_at
+          },
+          extracted_items: extractedData.items
         }
       });
     } catch (error) {
       next(error);
     }
-  };
+  }
 
-  getFile = async (req: Request, res: Response, next: NextFunction) => {
+  async getReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { id } = req.params;
-
-      // Validate ID is a number
-      if (isNaN(Number(id))) {
-        throw AppError.validationError('Invalid file ID format');
+      const receiptId = parseInt(req.params.id);
+      if (isNaN(receiptId)) {
+        throw AppError.validationError('Invalid receipt ID');
       }
 
-      const file = await this.fileService.getFileById(Number(id));
-      if (!file) {
-        throw AppError.notFound(`File with ID ${id} not found`);
-      }
-
-      // Check if file exists on disk
-      const fullPath = path.join(process.cwd(), file.file_path);
-      if (!fs.existsSync(fullPath)) {
-        throw AppError.fileError(`File not found at path: ${file.file_path}`);
-      }
-
-      res.status(200).json({
-        status: 'success',
-        data: file
-      });
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  getAllFiles = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const files = await this.fileService.getAllFiles();
-
-      // Filter out files that don't exist on disk
-      const validFiles = files.filter(file => {
-        const fullPath = path.join(process.cwd(), file.file_path);
-        return fs.existsSync(fullPath);
+      const receipt = await this.receiptRepository.findOne({
+        where: { id: receiptId }
       });
 
-      // Update database for files that don't exist
-      for (const file of files) {
-        const fullPath = path.join(process.cwd(), file.file_path);
-        if (!fs.existsSync(fullPath)) {
-          await this.fileService.updateFileValidation(
-            file.id,
-            false,
-            'File not found on disk'
-          );
+      if (!receipt) {
+        throw AppError.notFoundError('Receipt not found');
+      }
+
+      res.json({
+        success: true,
+        data: {
+          receipt: {
+            id: receipt.id,
+            merchant_name: receipt.merchant_name,
+            purchased_at: receipt.purchased_at,
+            total_amount: receipt.total_amount,
+            file_path: receipt.file_path,
+            created_at: receipt.created_at
+          }
         }
-      }
-
-      res.status(200).json({
-        status: 'success',
-        data: validFiles
       });
     } catch (error) {
       next(error);
     }
-  };
+  }
 
-  deleteFile = async (req: Request, res: Response, next: NextFunction) => {
+  async listReceipts(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { id } = req.params;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const skip = (page - 1) * limit;
 
-      // Validate ID is a number
-      if (isNaN(Number(id))) {
-        throw AppError.validationError('Invalid file ID format');
-      }
+      const [receipts, total] = await this.receiptRepository.findAndCount({
+        skip,
+        take: limit,
+        order: {
+          purchased_at: 'DESC'
+        }
+      });
 
-      const file = await this.fileService.getFileById(Number(id));
-      if (!file) {
-        throw AppError.notFound(`File with ID ${id} not found`);
-      }
-
-      // Check if file exists on disk before attempting deletion
-      const fullPath = path.join(process.cwd(), file.file_path);
-      if (fs.existsSync(fullPath)) {
-        await this.fileService.deleteFile(Number(id));
-      } else {
-        // If file doesn't exist on disk, just delete the database record
-        await this.fileService.deleteFileRecord(Number(id));
-      }
-
-      res.status(204).send();
+      res.json({
+        success: true,
+        data: {
+          receipts: receipts.map(receipt => ({
+            id: receipt.id,
+            merchant_name: receipt.merchant_name,
+            purchased_at: receipt.purchased_at,
+            total_amount: receipt.total_amount,
+            file_path: receipt.file_path,
+            created_at: receipt.created_at
+          })),
+          pagination: {
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit)
+          }
+        }
+      });
     } catch (error) {
       next(error);
     }
-  };
-} 
+  }
+
+  async deleteReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const receiptId = parseInt(req.params.id);
+      if (isNaN(receiptId)) {
+        throw AppError.validationError('Invalid receipt ID');
+      }
+
+      const receipt = await this.receiptRepository.findOne({
+        where: { id: receiptId }
+      });
+
+      if (!receipt) {
+        throw AppError.notFoundError('Receipt not found');
+      }
+
+      // Delete file from disk
+      await this.fileService.deleteFile(receipt.file_path);
+
+      // Delete from database
+      await this.receiptRepository.remove(receipt);
+
+      res.json({
+        success: true,
+        message: 'Receipt deleted successfully'
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async terminate(): Promise<void> {
+    await this.extractionService.terminate();
+  }
+}
