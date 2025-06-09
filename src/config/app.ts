@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { receiptRoutes } from '../routes/receiptRoutes';
+import { errorHandler } from '../middleware/errorHandler';
 
 export const createApp = () => {
   const app = express();
@@ -17,15 +18,8 @@ export const createApp = () => {
   // Routes
   app.use('/api', receiptRoutes);
 
-  // Error handling middleware
-  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error(err.stack);
-    res.status(500).json({
-      status: 'error',
-      message: 'Something went wrong!',
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
-  });
+  // Error handling middleware (should be last)
+  app.use(errorHandler);
 
   return app;
 }; 
