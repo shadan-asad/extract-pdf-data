@@ -3,22 +3,33 @@ export enum ErrorType {
   NOT_FOUND = 'NOT_FOUND_ERROR',
   FILE = 'FILE_ERROR',
   DATABASE = 'DATABASE_ERROR',
-  PROCESSING = 'PROCESSING_ERROR'
+  PROCESSING = 'PROCESSING_ERROR',
+  OCR = 'OCR_ERROR',
+  UNAUTHORIZED = 'UNAUTHORIZED_ERROR',
+  RATE_LIMIT = 'RATE_LIMIT_ERROR'
+}
+
+export interface ValidationErrorDetail {
+  field: string;
+  message: string;
+  value?: any;
 }
 
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly type: ErrorType;
+  public readonly details?: ValidationErrorDetail[];
 
-  constructor(message: string, statusCode: number, type: ErrorType) {
+  constructor(message: string, statusCode: number, type: ErrorType, details?: ValidationErrorDetail[]) {
     super(message);
     this.statusCode = statusCode;
     this.type = type;
+    this.details = details;
     Object.setPrototypeOf(this, AppError.prototype);
   }
 
-  static validationError(message: string): AppError {
-    return new AppError(message, 400, ErrorType.VALIDATION);
+  static validationError(message: string, details?: ValidationErrorDetail[]): AppError {
+    return new AppError(message, 400, ErrorType.VALIDATION, details);
   }
 
   static notFoundError(message: string): AppError {
@@ -35,5 +46,17 @@ export class AppError extends Error {
 
   static processingError(message: string): AppError {
     return new AppError(message, 500, ErrorType.PROCESSING);
+  }
+
+  static ocrError(message: string): AppError {
+    return new AppError(message, 500, ErrorType.OCR);
+  }
+
+  static unauthorizedError(message: string): AppError {
+    return new AppError(message, 401, ErrorType.UNAUTHORIZED);
+  }
+
+  static rateLimitError(message: string): AppError {
+    return new AppError(message, 429, ErrorType.RATE_LIMIT);
   }
 } 
