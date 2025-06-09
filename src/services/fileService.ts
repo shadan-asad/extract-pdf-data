@@ -86,6 +86,16 @@ export class FileService {
     }
   }
 
+  async updateFileProcessing(fileId: number, isProcessed: boolean): Promise<void> {
+    try {
+      await this.receiptFileRepository.update(fileId, {
+        is_processed: isProcessed
+      });
+    } catch (error) {
+      throw AppError.databaseError('Failed to update file processing status');
+    }
+  }
+
   async getFileById(id: number): Promise<ReceiptFile | null> {
     try {
       return await this.receiptFileRepository.findOneBy({ id });

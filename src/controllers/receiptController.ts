@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { FileService } from '../services/fileService';
 import { ReceiptExtractionService } from '../services/receiptExtractionService';
-import { AppError } from '../types/errors';
+import { AppError, ErrorType } from '../types/errors';
 import { Receipt } from '../models/Receipt';
 import { AppDataSource } from '../config/database';
 
@@ -15,22 +15,101 @@ export class ReceiptController {
     this.extractionService = new ReceiptExtractionService();
   }
 
-  async uploadReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async uploadFile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.file) {
         throw AppError.validationError('No file uploaded');
       }
 
-      // Save file to disk
+      // Save file to disk and get metadata
       const filePath = await this.fileService.saveFile(req.file);
-
-      // Extract data from receipt
-      const extractedData = await this.extractionService.extractReceiptData(filePath);
-
-      // Save receipt data to database
-      const receipt = await this.extractionService.saveReceiptData(filePath, extractedData);
+      const receiptFile = await this.fileService.saveFileMetadata(req.file.originalname, filePath);
 
       res.status(201).json({
+        success: true,
+        data: {
+          file: {
+            id: receiptFile.id,
+            file_name: receiptFile.file_name,
+            file_path: receiptFile.file_path,
+            is_valid: receiptFile.is_valid,
+            is_processed: receiptFile.is_processed,
+            created_at: receiptFile.created_at
+          }
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async validateReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const fileId = parseInt(req.params.fileId);
+      if (isNaN(fileId)) {
+        throw AppError.validationError('Invalid file ID');
+      }
+
+      const receiptFile = await this.fileService.getFileById(fileId);
+      if (!receiptFile) {
+        throw AppError.notFoundError('File not found');
+      }
+
+      // Extract and validate data
+      const extractedData = await this.extractionService.extractReceiptData(receiptFile.file_path);
+      
+      // Update file validation status
+      await this.fileService.updateFileValidation(fileId, true);
+
+      res.json({
+        success: true,
+        data: {
+          file: {
+            id: receiptFile.id,
+            file_name: receiptFile.file_name,
+            is_valid: true,
+            is_processed: false,
+            extracted_data: {
+              merchant_name: extractedData.merchantName,
+              purchased_at: extractedData.purchaseDate,
+              total_amount: extractedData.totalAmount
+            }
+          }
+        }
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.type === ErrorType.VALIDATION) {
+        // Update file validation status with error
+        await this.fileService.updateFileValidation(parseInt(req.params.fileId), false, error.message);
+      }
+      next(error);
+    }
+  }
+
+  async processReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const fileId = parseInt(req.params.fileId);
+      if (isNaN(fileId)) {
+        throw AppError.validationError('Invalid file ID');
+      }
+
+      const receiptFile = await this.fileService.getFileById(fileId);
+      if (!receiptFile) {
+        throw AppError.notFoundError('File not found');
+      }
+
+      if (!receiptFile.is_valid) {
+        throw AppError.validationError('Cannot process invalid receipt');
+      }
+
+      // Extract data and save to database
+      const extractedData = await this.extractionService.extractReceiptData(receiptFile.file_path);
+      const receipt = await this.extractionService.saveReceiptData(receiptFile.file_path, extractedData);
+
+      // Update file processing status
+      await this.fileService.updateFileProcessing(fileId, true);
+
+      res.json({
         success: true,
         data: {
           receipt: {

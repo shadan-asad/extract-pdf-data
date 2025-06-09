@@ -5,14 +5,20 @@ import { uploadMiddleware } from '../middleware/uploadMiddleware';
 const router = Router();
 const receiptController = new ReceiptController();
 
-// Upload a new receipt
-router.post('/upload', uploadMiddleware, receiptController.uploadReceipt.bind(receiptController));
+// List all receipts with pagination (most generic route)
+router.get('/receipts', receiptController.listReceipts.bind(receiptController));
 
-// Get a specific receipt
-router.get('/:id', receiptController.getReceipt.bind(receiptController));
+// Upload a new receipt file
+router.post('/upload', uploadMiddleware, receiptController.uploadFile.bind(receiptController));
 
-// List all receipts with pagination
-router.get('/', receiptController.listReceipts.bind(receiptController));
+// Validate an uploaded receipt
+router.post('/validate/:fileId', receiptController.validateReceipt.bind(receiptController));
+
+// Process a validated receipt
+router.post('/process/:fileId', receiptController.processReceipt.bind(receiptController));
+
+// Get a specific receipt (more specific route)
+router.get('/receipts/:id', receiptController.getReceipt.bind(receiptController));
 
 // Delete a receipt
 router.delete('/:id', receiptController.deleteReceipt.bind(receiptController));
