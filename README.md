@@ -1,6 +1,6 @@
 # PDF Receipt Extraction System
 
-A web application that extracts and manages data from PDF receipts using OCR/AI techniques.
+A web application that extracts and manages data from PDF receipts using OCR/AI techniques. The system provides a RESTful API for uploading, validating, and processing PDF receipts, with automatic extraction of key information such as merchant name, purchase date, and total amount.
 
 ## Features
 
@@ -9,6 +9,9 @@ A web application that extracts and manages data from PDF receipts using OCR/AI 
 - Store extracted information in SQLite database
 - RESTful API for receipt management
 - File validation and error handling
+- Comprehensive API documentation
+- Pagination support for receipt listing
+- Detailed error reporting
 
 ## Tech Stack
 
@@ -18,6 +21,7 @@ A web application that extracts and manages data from PDF receipts using OCR/AI 
 - SQLite (TypeORM)
 - Tesseract.js (OCR)
 - PDF-parse
+- Swagger/OpenAPI (API Documentation)
 - Jest (Testing)
 
 ## Prerequisites
@@ -39,7 +43,7 @@ npm install
 ```
 
 3. Create a `.env` file in the root directory with the following variables:
-```
+```env
 PORT=3000
 NODE_ENV=development
 UPLOAD_DIR=uploads
@@ -62,29 +66,105 @@ Production mode:
 npm start
 ```
 
+## API Documentation
+
+The API documentation is available at `/api-docs` when the server is running. It provides:
+- Interactive API documentation
+- Request/response examples
+- Schema definitions
+- Try-it-out functionality
+
 ## API Endpoints
 
+### Receipt Management
+
+1. List Receipts
+   - `GET /api/receipts`
+   - Query Parameters:
+     - `page` (default: 1): Page number
+     - `limit` (default: 10, max: 100): Items per page
+   - Returns: Paginated list of receipts
+
+2. Get Receipt
+   - `GET /api/receipts/:id`
+   - Returns: Receipt details
+
+3. Delete Receipt
+   - `DELETE /api/receipts/:id`
+   - Returns: Success message
+
+### Receipt Processing
+
 1. Upload Receipt
-   - POST `/upload`
-   - Uploads a PDF receipt file
+   - `POST /api/upload`
+   - Content-Type: `multipart/form-data`
+   - Body: `receipt` (PDF file)
+   - Returns: File metadata
 
 2. Validate Receipt
-   - POST `/validate`
-   - Validates the uploaded PDF file
+   - `POST /api/validate/:fileId`
+   - Returns: Validation results and extracted data
 
 3. Process Receipt
-   - POST `/process`
-   - Extracts data from the receipt using OCR
+   - `POST /api/process/:fileId`
+   - Returns: Processed receipt data
 
-4. List Receipts
-   - GET `/receipts`
-   - Retrieves all stored receipts
+## Error Handling
 
-5. Get Receipt Details
-   - GET `/receipts/{id}`
-   - Retrieves details of a specific receipt
+The API uses a consistent error response format:
 
-## Testing
+```json
+{
+  "status": "error",
+  "type": "ERROR_TYPE",
+  "message": "Error message",
+  "details": [
+    {
+      "field": "field_name",
+      "message": "Specific error message",
+      "value": "invalid_value"
+    }
+  ]
+}
+```
+
+Error Types:
+- `VALIDATION_ERROR`: Input validation failed
+- `NOT_FOUND_ERROR`: Resource not found
+- `FILE_ERROR`: File operation failed
+- `DATABASE_ERROR`: Database operation failed
+- `PROCESSING_ERROR`: General processing error
+- `OCR_ERROR`: OCR processing failed
+- `UNAUTHORIZED_ERROR`: Authentication required
+- `RATE_LIMIT_ERROR`: Too many requests
+
+## Development
+
+### Project Structure
+
+```
+extract-pdf-data/
+├── src/
+│   ├── config/          # Configuration files
+│   │   ├── app.ts       # Express app setup
+│   │   ├── database.ts  # Database configuration
+│   │   └── swagger.ts   # API documentation
+│   ├── models/          # Database models
+│   ├── services/        # Business logic
+│   │   ├── fileService.ts
+│   │   ├── ocrService.ts
+│   │   └── receiptExtractionService.ts
+│   ├── controllers/     # API controllers
+│   ├── routes/          # API routes
+│   ├── middleware/      # Custom middleware
+│   ├── utils/           # Utility functions
+│   └── types/           # TypeScript types
+├── uploads/             # Uploaded files
+├── tests/              # Test files
+└── database/           # SQLite database
+```
+
+### Testing
 
 Run tests:
 ```bash
@@ -96,32 +176,14 @@ Watch mode:
 npm run test:watch
 ```
 
-## Project Structure
-
-```
-extract-pdf-data/
-├── src/
-│   ├── config/          # Configuration files
-│   ├── models/          # Database models
-│   ├── services/        # Business logic
-│   ├── controllers/     # API controllers
-│   ├── routes/          # API routes
-│   ├── middleware/      # Custom middleware
-│   ├── utils/           # Utility functions
-│   └── types/           # TypeScript types
-├── uploads/             # Uploaded files
-├── database/            # SQLite database
-└── tests/              # Test files
-```
-
-## Contributing
+### Contributing
 
 1. Fork the repository
-2. Create your feature branch
+2. Create a feature branch
 3. Commit your changes
 4. Push to the branch
-5. Create a new Pull Request
+5. Create a Pull Request
 
 ## License
 
-ISC 
+This project is licensed under the MIT License - see the LICENSE file for details. 
