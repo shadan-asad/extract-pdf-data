@@ -36,7 +36,8 @@ export class ReceiptController {
             is_processed: receiptFile.is_processed,
             created_at: receiptFile.created_at
           }
-        }
+        },
+        message: 'File uploaded successfully'
       });
     } catch (error) {
       next(error);
@@ -55,11 +56,15 @@ export class ReceiptController {
         throw AppError.notFoundError('File not found');
       }
 
-      // Extract and validate data
-      const extractedData = await this.extractionService.extractReceiptData(receiptFile.file_path);
+      // Validate PDF format
+      const validationResult = await this.fileService.validatePdf(receiptFile.file_path);
       
       // Update file validation status
-      await this.fileService.updateFileValidation(fileId, true);
+      await this.fileService.updateFileValidation(
+        fileId, 
+        validationResult.isValid, 
+        validationResult.reason
+      );
 
       res.json({
         success: true,
@@ -67,21 +72,16 @@ export class ReceiptController {
           file: {
             id: receiptFile.id,
             file_name: receiptFile.file_name,
-            is_valid: true,
+            is_valid: validationResult.isValid,
             is_processed: false,
-            extracted_data: {
-              merchant_name: extractedData.merchantName,
-              purchased_at: extractedData.purchaseDate,
-              total_amount: extractedData.totalAmount
-            }
+            invalid_reason: validationResult.reason
           }
-        }
+        },
+        message: validationResult.isValid ? 
+          'File validated successfully' : 
+          'File validation failed'
       });
     } catch (error) {
-      if (error instanceof AppError && error.type === ErrorType.VALIDATION) {
-        // Update file validation status with error
-        await this.fileService.updateFileValidation(parseInt(req.params.fileId), false, error.message);
-      }
       next(error);
     }
   }
@@ -99,11 +99,16 @@ export class ReceiptController {
       }
 
       if (!receiptFile.is_valid) {
-        throw AppError.validationError('Cannot process invalid receipt');
+        throw AppError.validationError(
+          'Cannot process invalid receipt: ' + 
+          (receiptFile.invalid_reason || 'File not validated')
+        );
       }
 
-      // Extract data and save to database
+      // Extract data using OCR/AI
       const extractedData = await this.extractionService.extractReceiptData(receiptFile.file_path);
+      
+      // Save to database
       const receipt = await this.extractionService.saveReceiptData(receiptFile.file_path, extractedData);
 
       // Update file processing status
@@ -121,9 +126,21 @@ export class ReceiptController {
             created_at: receipt.created_at
           },
           extracted_items: extractedData.items
-        }
+        },
+        message: 'Receipt processed successfully'
       });
     } catch (error) {
+      // If processing fails, update the file status
+      if (req.params.fileId) {
+        try {
+          await this.fileService.updateFileProcessing(
+            parseInt(req.params.fileId), 
+            false
+          );
+        } catch (updateError) {
+          console.error('Failed to update file processing status:', updateError);
+        }
+      }
       next(error);
     }
   }
@@ -167,11 +184,21 @@ export class ReceiptController {
       const limit = parseInt(req.query.limit as string) || 10;
       const skip = (page - 1) * limit;
 
+      // Add sorting options
+      const sortBy = (req.query.sortBy as string) || 'purchased_at';
+      const sortOrder = (req.query.sortOrder as string)?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+      // Validate sort field
+      const allowedSortFields = ['purchased_at', 'merchant_name', 'total_amount', 'created_at'];
+      if (!allowedSortFields.includes(sortBy)) {
+        throw AppError.validationError('Invalid sort field');
+      }
+
       const [receipts, total] = await this.receiptRepository.findAndCount({
         skip,
         take: limit,
         order: {
-          purchased_at: 'DESC'
+          [sortBy]: sortOrder
         }
       });
 
@@ -190,7 +217,8 @@ export class ReceiptController {
             total,
             page,
             limit,
-            pages: Math.ceil(total / limit)
+            pages: Math.ceil(total / limit),
+            has_more: skip + receipts.length < total
           }
         }
       });

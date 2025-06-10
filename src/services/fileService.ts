@@ -7,6 +7,8 @@ import { AppError } from '../types/errors';
 export class FileService {
   private receiptFileRepository = AppDataSource.getRepository(ReceiptFile);
   private uploadDir: string;
+  private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  private readonly ALLOWED_MIME_TYPES = ['application/pdf'];
 
   constructor() {
     this.uploadDir = path.join(process.cwd(), 'uploads');
@@ -35,6 +37,16 @@ export class FileService {
 
   async saveFile(file: Express.Multer.File): Promise<string> {
     try {
+      // Validate file type
+      if (!this.ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+        throw AppError.validationError('Only PDF files are allowed');
+      }
+
+      // Validate file size
+      if (file.size > this.MAX_FILE_SIZE) {
+        throw AppError.validationError('File size exceeds 10MB limit');
+      }
+
       // Generate unique filename
       const timestamp = Date.now();
       const originalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -47,6 +59,9 @@ export class FileService {
       // Return relative path
       return path.relative(process.cwd(), filePath);
     } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
       throw AppError.fileError('Failed to save file');
     }
   }
@@ -58,20 +73,45 @@ export class FileService {
         return { isValid: false, reason: 'File not found' };
       }
 
-      // Basic PDF validation - check file signature
-      const buffer = Buffer.alloc(5);
+      // Check file size
+      const stats = await fs.promises.stat(fullPath);
+      if (stats.size === 0) {
+        return { isValid: false, reason: 'File is empty' };
+      }
+      if (stats.size > this.MAX_FILE_SIZE) {
+        return { isValid: false, reason: 'File size exceeds 10MB limit' };
+      }
+
+      // Enhanced PDF validation
+      const buffer = Buffer.alloc(1024); // Read more bytes for better validation
       const fd = await fs.promises.open(fullPath, 'r');
-      await fd.read(buffer, 0, 5, 0);
+      await fd.read(buffer, 0, 1024, 0);
       await fd.close();
 
       // Check for PDF signature (%PDF-)
       const isPdf = buffer.toString().startsWith('%PDF-');
-      return {
-        isValid: isPdf,
-        reason: isPdf ? undefined : 'Invalid PDF format'
-      };
+      if (!isPdf) {
+        return { isValid: false, reason: 'Invalid PDF format: Missing PDF signature' };
+      }
+
+      // Check for PDF version
+      const versionMatch = buffer.toString().match(/%PDF-(\d+\.\d+)/);
+      if (!versionMatch) {
+        return { isValid: false, reason: 'Invalid PDF format: Missing version number' };
+      }
+
+      // Check for EOF marker
+      const hasEof = buffer.toString().includes('%%EOF');
+      if (!hasEof) {
+        // This is not a definitive check as EOF might be at the end of the file
+        // We'll just log it for now
+        console.warn('PDF EOF marker not found in header');
+      }
+
+      return { isValid: true };
     } catch (error) {
-      return { isValid: false, reason: 'Failed to validate PDF' };
+      console.error('PDF validation error:', error);
+      return { isValid: false, reason: 'Failed to validate PDF: ' + (error as Error).message };
     }
   }
 

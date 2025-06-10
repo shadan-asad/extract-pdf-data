@@ -33,7 +33,7 @@ A web application that extracts and manages data from PDF receipts using OCR/AI 
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone github.com/shadan-asad/extract-pdf-data
 cd extract-pdf-data
 ```
 
@@ -176,13 +176,6 @@ Watch mode:
 npm run test:watch
 ```
 
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
 
 ## License
 
