@@ -15,7 +15,6 @@ export class PdfImageService {
   constructor() {
     this.outputDir = path.join(process.cwd(), 'temp_images');
     this.ensureOutputDirectory();
-    console.log('PdfImageService initialized with output directory:', this.outputDir);
   }
 
   private ensureOutputDirectory(): void {
@@ -27,16 +26,6 @@ export class PdfImageService {
     }
   }
 
-  private async checkPopplerInstallation(): Promise<void> {
-    try {
-      console.log('Checking poppler installation...');
-      const { stdout } = await execAsync('which pdftoppm');
-      console.log('Poppler found at:', stdout.trim());
-    } catch (error) {
-      console.error('Poppler not found:', error);
-      throw AppError.processingError('Poppler (pdftoppm) is not installed. Please install it using: brew install poppler');
-    }
-  }
 
   async convertPdfToImages(pdfPath: string): Promise<string[]> {
     let outputDir = '';
@@ -44,8 +33,6 @@ export class PdfImageService {
       console.log('=== Starting PDF conversion process ===');
       console.log('Input PDF path:', pdfPath);
       
-      // Check poppler installation first
-      await this.checkPopplerInstallation();
       
       const fullPdfPath = path.join(process.cwd(), pdfPath);
       console.log('Full PDF path:', fullPdfPath);
@@ -93,7 +80,6 @@ export class PdfImageService {
           progressive: false // Disable progressive JPEG for faster processing
         }
       };
-      console.log('PDF conversion options:', JSON.stringify(options, null, 2));
 
       try {
         // Convert PDF to images using direct pdftoppm command for better control

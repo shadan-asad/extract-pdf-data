@@ -114,12 +114,6 @@ export class GeminiService {
     // If the response ends with a newline, remove it
     cleaned = cleaned.replace(/\n+$/, '');
     
-    // Log the cleaning process for debugging
-    console.log('Response cleaning steps:', {
-      original: text,
-      cleaned: cleaned
-    });
-    
     return cleaned;
   }
 
