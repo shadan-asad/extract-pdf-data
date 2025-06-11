@@ -1,71 +1,133 @@
-import { createWorker } from 'tesseract.js';
-import fs from 'fs';
-import path from 'path';
+import { createWorker, Worker, PSM, RecognizeResult } from 'tesseract.js';
+import { PdfImageService } from './pdfImageService';
 import { AppError } from '../types/errors';
-import pdf from 'pdf-parse';
+
+const OCR_TIMEOUT = 300000; // 5 minutes for OCR
+const PROCESS_TIMEOUT = 600000; // 10 minutes for entire process
+const PDF_CONVERSION_TIMEOUT = 300000; // 5 minutes for PDF conversion
 
 export class OCRService {
-  private worker: Tesseract.Worker | null = null;
+  private worker: Worker | null = null;
+  private pdfImageService: PdfImageService;
+
+  constructor() {
+    this.pdfImageService = new PdfImageService();
+  }
 
   async initialize(): Promise<void> {
     try {
+      // Create worker with English language
       this.worker = await createWorker('eng');
-      await this.worker.loadLanguage('eng');
-      // Configure Tesseract for better accuracy
+
+      // Set runtime parameters that can be changed after initialization
       await this.worker.setParameters({
         tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz$.,/-: ',
-        tessedit_pageseg_mode: '6', // Assume uniform text block
-        preserve_interword_spaces: '1'
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+        preserve_interword_spaces: '1',
+        textord_heavy_nr: '1',
+        textord_min_linesize: '2.5'
       });
-      await this.worker.initialize('eng');
+
+      console.log('OCR worker initialized successfully');
     } catch (error) {
-      throw AppError.processingError('Failed to initialize OCR service');
+      console.error('OCR initialization error:', error);
+      throw AppError.processingError('Failed to initialize OCR service: ' + (error as Error).message);
     }
   }
 
-  async extractTextFromPdf(filePath: string): Promise<string> {
+  async extractTextFromPdf(pdfPath: string): Promise<string> {
+    const startTime = Date.now();
+    console.log('Starting PDF text extraction...');
+    let tempImages: string[] = [];
+
     try {
-      if (!this.worker) {
-        await this.initialize();
+      // Check if we've exceeded the total process timeout
+      if (Date.now() - startTime > PROCESS_TIMEOUT) {
+        throw AppError.processingError('Data extraction timeout');
       }
 
-      const fullPath = path.join(process.cwd(), filePath);
-      if (!fs.existsSync(fullPath)) {
-        throw AppError.fileError(`File not found at path: ${filePath}`);
-      }
-
-      // First, try to extract text using pdf-parse
-      const dataBuffer = fs.readFileSync(fullPath);
-      const pdfData = await pdf(dataBuffer, {
-        pagerender: this.renderPage,
-        max: 0 // No page limit
+      // Convert PDF to images with timeout
+      console.log('Converting PDF to images...');
+      const conversionPromise = this.pdfImageService.convertPdfToImages(pdfPath);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('PDF conversion timeout'));
+        }, PDF_CONVERSION_TIMEOUT);
       });
 
-      let extractedText = '';
+      tempImages = await Promise.race([conversionPromise, timeoutPromise]) as string[];
+      console.log(`Successfully converted PDF to ${tempImages.length} images`);
 
-      // If pdf-parse successfully extracted text, clean and normalize it
-      if (pdfData.text && pdfData.text.trim().length > 0) {
-        extractedText = this.normalizeText(pdfData.text);
-        console.log('Text extracted using pdf-parse:', extractedText);
-      }
+      // Process each image with OCR
+      const allText: string[] = [];
+      for (const imagePath of tempImages) {
+        try {
+          // Check if we've exceeded the total process timeout
+          if (Date.now() - startTime > PROCESS_TIMEOUT) {
+            throw AppError.processingError('Data extraction timeout');
+          }
 
-      // If pdf-parse couldn't extract text or the text is too short, use Tesseract
-      if (!extractedText || extractedText.length < 50) {
-        if (!this.worker) {
-          throw AppError.processingError('OCR service not initialized');
+          if (!this.worker) {
+            console.error('OCR worker not initialized');
+            throw AppError.processingError('OCR worker not initialized');
+          }
+
+          console.log(`Processing image with OCR: ${imagePath}`);
+          const ocrPromise = this.worker.recognize(imagePath);
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('OCR recognition timeout'));
+            }, OCR_TIMEOUT);
+          });
+
+          const result = await Promise.race([ocrPromise, timeoutPromise]) as RecognizeResult;
+          console.log(`OCR completed for ${imagePath}`);
+          
+          if (result.data.text) {
+            allText.push(result.data.text);
+          }
+        } catch (error) {
+          console.error(`Error processing image ${imagePath}:`, {
+            error,
+            message: error.message,
+            stack: error.stack
+          });
+          // Continue with other images even if one fails
         }
-
-        const { data: { text } } = await this.worker.recognize(fullPath);
-        extractedText = this.normalizeText(text);
-        console.log('Text extracted using Tesseract:', extractedText);
       }
 
-      return extractedText;
+      if (allText.length === 0) {
+        throw AppError.processingError('No text could be extracted from the PDF');
+      }
+
+      return allText.join('\n\n');
     } catch (error) {
+      console.error('Error in extractTextFromPdf:', {
+        error,
+        message: error.message,
+        stack: error.stack,
+        elapsedTime: Date.now() - startTime
+      });
+
       if (error instanceof AppError) {
         throw error;
       }
-      throw AppError.processingError('Failed to extract text from PDF');
+      throw AppError.processingError('Failed to extract text from PDF: ' + (error as Error).message);
+    } finally {
+      // Clean up temporary images
+      if (tempImages.length > 0) {
+        try {
+          console.log('Cleaning up temporary images...');
+          await this.pdfImageService.cleanupImages(tempImages);
+          console.log('Temporary images cleaned up successfully');
+        } catch (cleanupError) {
+          console.error('Error cleaning up temporary images:', {
+            error: cleanupError,
+            message: cleanupError.message,
+            stack: cleanupError.stack
+          });
+        }
+      }
     }
   }
 
@@ -87,12 +149,17 @@ export class OCRService {
       .trim();
   }
 
-  private async renderPage(pageData: any): Promise<string> {
-    // This function can be used to pre-process the page before OCR
-    // For now, we'll just return the raw text
-    return pageData.getTextContent().then((content: any) => {
-      return content.items.map((item: any) => item.str).join(' ');
-    });
+  private postProcessText(text: string): string {
+    return text
+      // Fix common OCR mistakes in amounts
+      .replace(/(\d+)[oO](\d{2})/g, '$1.0$2') // Fix 10o00 -> 10.00
+      .replace(/(\d+)[lI](\d{2})/g, '$1.1$2') // Fix 10l00 -> 10.10
+      // Fix common date format issues
+      .replace(/(\d{1,2})[oO](\d{1,2})[oO](\d{2,4})/g, '$1/0$2/0$3') // Fix 1o1o2023 -> 1/01/2023
+      // Remove any remaining non-printable characters
+      .replace(/[^\x20-\x7E\n]/g, '')
+      // Final cleanup
+      .trim();
   }
 
   async terminate(): Promise<void> {

@@ -5,6 +5,8 @@ import { AppError, ErrorType } from '../types/errors';
 import { Receipt } from '../models/Receipt';
 import { AppDataSource } from '../config/database';
 
+const PROCESS_TIMEOUT = 180000; // 180 seconds timeout for entire process
+
 export class ReceiptController {
   private fileService: FileService;
   private extractionService: ReceiptExtractionService;
@@ -87,13 +89,21 @@ export class ReceiptController {
   }
 
   async processReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const startTime = Date.now();
+    let receiptFile = null;
+
     try {
       const fileId = parseInt(req.params.fileId);
       if (isNaN(fileId)) {
         throw AppError.validationError('Invalid file ID');
       }
 
-      const receiptFile = await this.fileService.getFileById(fileId);
+      // Check if we've exceeded the total process timeout
+      if (Date.now() - startTime > PROCESS_TIMEOUT) {
+        throw AppError.processingError('Process timeout exceeded');
+      }
+
+      receiptFile = await this.fileService.getFileById(fileId);
       if (!receiptFile) {
         throw AppError.notFoundError('File not found');
       }
@@ -105,14 +115,23 @@ export class ReceiptController {
         );
       }
 
-      // Extract data using OCR/AI
-      const extractedData = await this.extractionService.extractReceiptData(receiptFile.file_path);
+      // Set processing status to in-progress
+      await this.fileService.updateFileProcessing(fileId, false, 'Processing in progress');
+
+      // Extract data using OCR/AI with timeout
+      const extractionPromise = this.extractionService.extractReceiptData(receiptFile.file_path);
+      const extractedData = await Promise.race([
+        extractionPromise,
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Data extraction timeout')), PROCESS_TIMEOUT)
+        )
+      ]);
       
       // Save to database
       const receipt = await this.extractionService.saveReceiptData(receiptFile.file_path, extractedData);
 
-      // Update file processing status
-      await this.fileService.updateFileProcessing(fileId, true);
+      // Update file processing status to success
+      await this.fileService.updateFileProcessing(fileId, true, 'Processing completed successfully');
 
       res.json({
         success: true,
@@ -131,16 +150,29 @@ export class ReceiptController {
       });
     } catch (error) {
       // If processing fails, update the file status
-      if (req.params.fileId) {
+      if (receiptFile) {
         try {
+          const errorMessage = error instanceof AppError ? 
+            error.message : 
+            'Processing failed: ' + (error as Error).message;
+          
           await this.fileService.updateFileProcessing(
-            parseInt(req.params.fileId), 
-            false
+            receiptFile.id, 
+            false,
+            errorMessage
           );
         } catch (updateError) {
           console.error('Failed to update file processing status:', updateError);
         }
       }
+
+      // Clean up OCR resources
+      try {
+        await this.extractionService.terminate();
+      } catch (cleanupError) {
+        console.error('Failed to cleanup OCR resources:', cleanupError);
+      }
+
       next(error);
     }
   }

@@ -16,13 +16,30 @@ interface ExtractedReceiptData {
 export class ReceiptExtractionService {
   private ocrService: OCRService;
   private receiptRepository = AppDataSource.getRepository(Receipt);
+  private initialized: boolean = false;
 
   constructor() {
     this.ocrService = new OCRService();
   }
 
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      try {
+        await this.ocrService.initialize();
+        this.initialized = true;
+        console.log('OCR service initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize OCR service:', error);
+        throw AppError.processingError('Failed to initialize OCR service: ' + (error as Error).message);
+      }
+    }
+  }
+
   async extractReceiptData(filePath: string): Promise<ExtractedReceiptData> {
     try {
+      // Ensure OCR service is initialized
+      await this.ensureInitialized();
+
       // Extract text from PDF
       const text = await this.ocrService.extractTextFromPdf(filePath);
       

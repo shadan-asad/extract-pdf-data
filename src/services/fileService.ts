@@ -126,12 +126,26 @@ export class FileService {
     }
   }
 
-  async updateFileProcessing(fileId: number, isProcessed: boolean): Promise<void> {
+  async updateFileProcessing(fileId: number, isProcessed: boolean, statusMessage?: string): Promise<void> {
     try {
-      await this.receiptFileRepository.update(fileId, {
-        is_processed: isProcessed
+      const receiptFile = await this.receiptFileRepository.findOne({
+        where: { id: fileId }
       });
+
+      if (!receiptFile) {
+        throw AppError.notFoundError('File not found');
+      }
+
+      receiptFile.is_processed = isProcessed;
+      if (statusMessage) {
+        receiptFile.invalid_reason = statusMessage;
+      }
+
+      await this.receiptFileRepository.save(receiptFile);
     } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
       throw AppError.databaseError('Failed to update file processing status');
     }
   }
