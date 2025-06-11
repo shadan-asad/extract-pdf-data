@@ -1,4 +1,3 @@
-import { convert } from 'pdf-poppler';
 import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
