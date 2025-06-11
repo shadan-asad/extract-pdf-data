@@ -152,15 +152,4 @@ export class GeminiService {
 
     return validatedData;
   }
-
-  private validateDate(date: string | null): string | null {
-    if (!date) return null;
-    return date; // Accept any string format as is
-  }
-
-  private validateNumber(value: any): number | null {
-    if (value === null || value === undefined) return null;
-    const num = Number(value);
-    return isNaN(num) ? null : num;
-  }
 } 

@@ -3,10 +3,7 @@ export enum ErrorType {
   NOT_FOUND = 'NOT_FOUND_ERROR',
   FILE = 'FILE_ERROR',
   DATABASE = 'DATABASE_ERROR',
-  PROCESSING = 'PROCESSING_ERROR',
-  OCR = 'OCR_ERROR',
-  UNAUTHORIZED = 'UNAUTHORIZED_ERROR',
-  RATE_LIMIT = 'RATE_LIMIT_ERROR'
+  PROCESSING = 'PROCESSING_ERROR'
 }
 
 export interface ValidationErrorDetail {
@@ -46,17 +43,5 @@ export class AppError extends Error {
 
   static processingError(message: string): AppError {
     return new AppError(message, 500, ErrorType.PROCESSING);
-  }
-
-  static ocrError(message: string): AppError {
-    return new AppError(message, 500, ErrorType.OCR);
-  }
-
-  static unauthorizedError(message: string): AppError {
-    return new AppError(message, 401, ErrorType.UNAUTHORIZED);
-  }
-
-  static rateLimitError(message: string): AppError {
-    return new AppError(message, 429, ErrorType.RATE_LIMIT);
   }
 } 
