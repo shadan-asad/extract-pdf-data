@@ -239,8 +239,9 @@ router.post('/process/:fileId',
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
- *           minimum: 1
+ *           type: string
+ *           format: uuid
+ *           example: 123e4567-e89b-12d3-a456-426614174000
  *         description: Receipt ID
  *     responses:
  *       200:
@@ -273,7 +274,7 @@ router.post('/process/:fileId',
  */
 router.get('/receipts/:id',
   validate([
-    param('id').isInt({ min: 1 }).withMessage('Receipt ID must be a positive number')
+    param('id').isUUID().withMessage('Receipt ID must be a valid UUID')
   ]),
   receiptController.getReceipt.bind(receiptController)
 );
@@ -289,8 +290,9 @@ router.get('/receipts/:id',
  *         name: id
  *         required: true
  *         schema:
- *           type: integer
- *           minimum: 1
+ *           type: string
+ *           format: uuid
+ *           example: 123e4567-e89b-12d3-a456-426614174000
  *         description: Receipt ID
  *     responses:
  *       200:
@@ -321,7 +323,7 @@ router.get('/receipts/:id',
  */
 router.delete('/receipts/:id',
   validate([
-    param('id').isInt({ min: 1 }).withMessage('Receipt ID must be a positive number')
+    param('id').isUUID().withMessage('Receipt ID must be a valid UUID')
   ]),
   receiptController.deleteReceipt.bind(receiptController)
 );

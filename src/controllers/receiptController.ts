@@ -179,8 +179,8 @@ export class ReceiptController {
 
   async getReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const receiptId = parseInt(req.params.id);
-      if (isNaN(receiptId)) {
+      const receiptId = req.params.id;
+      if (!receiptId) {
         throw AppError.validationError('Invalid receipt ID');
       }
 
@@ -261,8 +261,8 @@ export class ReceiptController {
 
   async deleteReceipt(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const receiptId = parseInt(req.params.id);
-      if (isNaN(receiptId)) {
+      const receiptId = req.params.id;
+      if (!receiptId) {
         throw AppError.validationError('Invalid receipt ID');
       }
 
