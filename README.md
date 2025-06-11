@@ -44,9 +44,14 @@ npm install
 
 3. Create a `.env` file in the root directory with the following variables:
 ```env
+GEMINI_API_KEY=your_api_key
 PORT=3000
 NODE_ENV=development
 UPLOAD_DIR=uploads
+```
+OR Do this:
+```
+export GEMINI_API_KEY=your_api_key
 ```
 
 4. Build the project:
@@ -145,37 +150,23 @@ Error Types:
 ```
 extract-pdf-data/
 ├── src/
-│   ├── config/          # Configuration files
-│   │   ├── app.ts       # Express app setup
-│   │   ├── database.ts  # Database configuration
-│   │   └── swagger.ts   # API documentation
-│   ├── models/          # Database models
-│   ├── services/        # Business logic
-│   │   ├── fileService.ts
-│   │   ├── ocrService.ts
-│   │   └── receiptExtractionService.ts
-│   ├── controllers/     # API controllers
-│   ├── routes/          # API routes
-│   ├── middleware/      # Custom middleware
-│   ├── utils/           # Utility functions
-│   └── types/           # TypeScript types
-├── uploads/             # Uploaded files
-├── tests/              # Test files
-└── database/           # SQLite database
+│   ├── config/                  # Configuration files (Express, DB, Swagger)
+│   ├── controllers/             # API controllers
+│   ├── middleware/              # Custom middleware (error, auth, etc.)
+│   ├── models/                  # Database models (TypeORM entities)
+│   ├── routes/                  # API route definitions
+│   ├── services/                # Business logic (file, OCR, extraction)
+│   ├── types/                   # TypeScript types and interfaces
+│   ├── utils/                   # Utility/helper functions
+│   └── index.ts                 # App entry point
+├── uploads/                     # Uploaded PDF files
+├── tests/                       # Unit and integration tests
+├── database/                    # SQLite database file(s)
+├── .env                         # Environment variables
+├── package.json                 # Project metadata and scripts
+├── tsconfig.json                # TypeScript configuration
+└── README.md                    # Project documentation
 ```
-
-### Testing
-
-Run tests:
-```bash
-npm test
-```
-
-Watch mode:
-```bash
-npm run test:watch
-```
-
 
 ## License
 
